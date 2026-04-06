@@ -87,6 +87,48 @@ jobs:
           path: ./cfr-data/
           retention-days: 7
 
+  validate:
+    name: Run Validation
+    needs: [find-latest-cfr-run, download-cfr-artifact]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download CFR data artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cfr-data-for-viz-${{ github.run_number }}
+          path: ./cfr-data
+
+      - name: Verify reconstruction data
+        run: |
+          echo "Available NetCDF files:"
+          ls -lh ./cfr-data/*.nc
+
+      - name: Pull Docker image
+        run: docker pull davidedge/lmr2:latest
+
+      - name: Run validation script
+        run: |
+          docker run --rm \
+            -v $(pwd)/validate_recon.py:/app/validate_recon.py:ro \
+            -v $(pwd)/cfr-data:/recons:ro \
+            -v $(pwd)/validation:/validation \
+            -e RECON_DIR=/recons \
+            -e VALIDATION_DIR=/validation \
+            davidedge/lmr2:latest \
+            conda run -n cfr-env python /app/validate_recon.py
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-output-${{ github.run_number }}
+          path: ./validation/
+          retention-days: 30
+
   visualize:
     name: Generate Presto Visualization
     needs: [find-latest-cfr-run, download-cfr-artifact]
@@ -98,12 +140,12 @@ jobs:
 
   deploy-to-github-pages:
     name: Deploy to GitHub Pages
-    needs: [find-latest-cfr-run, visualize]
+    needs: [find-latest-cfr-run, visualize, validate]
+    if: always() && needs.visualize.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pages: write
       id-token: write
-      contents: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -115,14 +157,39 @@ jobs:
           name: presto-viz-output-CFR_Run_${{ needs.find-latest-cfr-run.outputs.run_number }}_Reviz_${{ github.run_number }}
           path: ./visualization-output
 
+      - name: Download validation artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-output-${{ github.run_number }}
+          path: ./visualization-output/validation
+
       - name: Prepare Pages content
         run: |
           find ./visualization-output -type f -name "*.zip" -delete
           if [ -d "visualization-output/viz" ]; then
             mv visualization-output/viz visualization-output/docs
           fi
-          echo '<meta http-equiv="refresh" content="0; url=docs/visualizer.html">' > ./visualization-output/index.html 
+
+          # Landing page with links to visualization and validation
+          HAS_VALIDATION=""
+          if [ -f "./visualization-output/validation/index.html" ]; then
+            HAS_VALIDATION="<p><a href='validation/index.html'>Validation Results</a></p>"
+          fi
+
+          cat > ./visualization-output/index.html << HTMLEOF
+          <!DOCTYPE html>
+          <html><head><title>LMR2 Results</title>
+          <style>body{font-family:sans-serif;text-align:center;padding:40px;}</style>
+          </head><body>
+          <h1>LMR2 Reconstruction Results</h1>
+          <p><a href="docs/visualizer.html">Interactive Visualization</a></p>
+          ${HAS_VALIDATION}
+          </body></html>
+          HTMLEOF
+
           ls -lah ./visualization-output/
+          ls -lah ./visualization-output/validation/ 2>/dev/null || echo "No validation output"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -136,11 +203,3 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Update repository About with Pages URL
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PAGE_URL="${{ steps.deployment.outputs.page_url }}docs/visualizer.html"
-          gh api --method PATCH "repos/${{ github.repository }}" \
-            --field homepage="$PAGE_URL"
-          echo "Repository homepage set to: $PAGE_URL"
