@@ -221,42 +221,100 @@ with open(metrics_path, 'w', newline='') as f:
     writer.writerow(['n_ensemble_members', int(recon_val.shape[1])])
 
 # ── 7. Generate HTML index ──────────────────────────────────────────────────
+# Color palette matches the GMST plot lines:
+#   custom recon = steelblue, LMRv2.1 = darkorange, GISTEMP = red
 html = f"""<!DOCTYPE html>
 <html>
 <head>
   <title>LMR Validation Results</title>
   <style>
+    :root {{
+      --custom: #4682b4;     /* steelblue */
+      --lmrv21: #ff8c00;     /* darkorange */
+      --gistemp: #dc2626;    /* red */
+    }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
            max-width: 960px; margin: 0 auto; padding: 24px; color: #1a1a1a; }}
-    h1 {{ border-bottom: 2px solid #2563eb; padding-bottom: 8px; }}
+    h1 {{ border-bottom: 2px solid var(--custom); padding-bottom: 8px; }}
     table {{ border-collapse: collapse; margin: 16px 0; }}
-    th, td {{ border: 1px solid #d1d5db; padding: 8px 16px; text-align: left; }}
+    th, td {{ border: 1px solid #d1d5db; padding: 8px 16px; text-align: left;
+             vertical-align: middle; }}
     th {{ background: #f3f4f6; }}
     img {{ max-width: 100%; margin: 12px 0; border: 1px solid #e5e7eb; }}
     .back {{ margin-top: 24px; }}
+
+    /* Colored text labels matching plot lines */
+    .label-custom  {{ color: var(--custom);  font-weight: 600; }}
+    .label-lmrv21  {{ color: var(--lmrv21);  font-weight: 600; }}
+    .label-gistemp {{ color: var(--gistemp); font-weight: 600; }}
+
+    /* Colored chip (small filled square) preceding a dataset name */
+    .chip {{
+      display: inline-block; width: 0.75em; height: 0.75em;
+      border-radius: 2px; margin-right: 6px; vertical-align: baseline;
+    }}
+    .chip-custom  {{ background: var(--custom); }}
+    .chip-lmrv21  {{ background: var(--lmrv21); }}
+    .chip-gistemp {{ background: var(--gistemp); }}
+
+    /* CUSTOM badge — pill identifying metrics that describe the new recon */
+    .badge-custom {{
+      display: inline-block;
+      background: var(--custom); color: white;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+      padding: 2px 8px; border-radius: 999px;
+      margin-right: 8px; vertical-align: middle;
+    }}
   </style>
 </head>
 <body>
   <h1>LMR Reconstruction Validation</h1>
 
   <h2>Summary Metrics</h2>
+  <p>Rows tagged <span class="badge-custom">CUSTOM</span> describe skill of the
+     new custom reconstruction; the <em>Reference</em> column identifies which
+     dataset it is being compared against (colors match the GMST plot below).</p>
   <table>
-    <tr><th>Metric</th><th>Value</th></tr>
-    <tr><td>Spatial Correlation vs GISTEMP (geographic mean)</td><td>{geo_mean_corr:.4f}</td></tr>
-    <tr><td>GMST Correlation vs GISTEMP ({VALID_START}-{VALID_END})</td><td>{gmst_corr:.4f}</td></tr>
-    <tr><td>GMST Correlation vs LMRv2.1 ({lmr_v21_overlap})</td><td>{lmr_v21_corr:.4f}</td></tr>
-    <tr><td>Ensemble Members</td><td>{int(recon_val.shape[1])}</td></tr>
-    <tr><td>Anomaly Reference Period</td><td>{ANOM_PERIOD[0]}-{ANOM_PERIOD[1]}</td></tr>
+    <tr><th>Metric</th><th>Reference</th><th>Value</th></tr>
+    <tr>
+      <td><span class="badge-custom">CUSTOM</span>Spatial correlation (geographic mean)</td>
+      <td><span class="chip chip-gistemp"></span><span class="label-gistemp">GISTEMP</span></td>
+      <td>{geo_mean_corr:.4f}</td>
+    </tr>
+    <tr>
+      <td><span class="badge-custom">CUSTOM</span>GMST correlation ({VALID_START}-{VALID_END})</td>
+      <td><span class="chip chip-gistemp"></span><span class="label-gistemp">GISTEMP</span></td>
+      <td>{gmst_corr:.4f}</td>
+    </tr>
+    <tr>
+      <td><span class="badge-custom">CUSTOM</span>GMST correlation ({lmr_v21_overlap})</td>
+      <td><span class="chip chip-lmrv21"></span><span class="label-lmrv21">LMRv2.1</span></td>
+      <td>{lmr_v21_corr:.4f}</td>
+    </tr>
+    <tr>
+      <td><span class="badge-custom">CUSTOM</span>Ensemble members</td>
+      <td>&mdash;</td>
+      <td>{int(recon_val.shape[1])}</td>
+    </tr>
+    <tr>
+      <td>Anomaly reference period</td>
+      <td>&mdash;</td>
+      <td>{ANOM_PERIOD[0]}-{ANOM_PERIOD[1]}</td>
+    </tr>
   </table>
 
   <h2>Spatial Correlation Map</h2>
-  <p>Pearson correlation between reconstruction and GISTEMP at each grid cell
+  <p>Pearson correlation between the
+     <span class="label-custom">custom reconstruction</span> and
+     <span class="label-gistemp">GISTEMP</span> at each grid cell
      over {VALID_START}-{VALID_END}.</p>
   <img src="spatial_corr_map.png" alt="Spatial correlation map">
 
   <h2>Global Mean Surface Temperature</h2>
-  <p>Custom reconstruction ensemble spread (5-95%) compared against the
-     published LMRv2.1 ensemble and GISTEMP observations.</p>
+  <p><span class="label-custom">Custom reconstruction</span> ensemble spread
+     (5-95%) compared against the published
+     <span class="label-lmrv21">LMRv2.1 ensemble</span> and
+     <span class="label-gistemp">GISTEMP</span> observations.</p>
   <img src="gmst_timeseries.png" alt="GMST time series">
 
   <p class="back"><a href="../index.html">&larr; Back to results</a></p>
