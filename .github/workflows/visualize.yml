@@ -183,7 +183,7 @@ jobs:
           # Conditionally include the validation tile
           VALIDATION_TILE=""
           if [ -f "./visualization-output/validation/index.html" ]; then
-            VALIDATION_TILE='<a class="tile" href="validation/index.html"><img src="images/validation.png" alt="Validation"><span>Validation</span></a>'
+            VALIDATION_TILE='<a class="tile" href="validation/index.html"><img src="images/validation.png" alt="Reconstruction Validation"><span>Reconstruction Validation</span></a>'
           fi
 
           cat > ./visualization-output/index.html << HTMLEOF
@@ -239,9 +239,9 @@ jobs:
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                justify-content: center;
-                width: 240px;
-                padding: 24px;
+                justify-content: flex-start;
+                width: clamp(240px, 32vw, 480px);
+                padding: clamp(20px, 2.5vw, 40px);
                 background: var(--tile-bg);
                 border-radius: 12px;
                 box-shadow: var(--tile-shadow);
@@ -255,14 +255,15 @@ jobs:
               }
               .tile img {
                 width: 100%;
-                max-width: 192px;
-                height: auto;
-                margin-bottom: 16px;
+                height: clamp(160px, 22vw, 360px);
+                object-fit: contain;
+                margin-bottom: 20px;
               }
               .tile span {
-                font-size: 1.15rem;
+                font-size: clamp(1.1rem, 1.6vw, 1.5rem);
                 font-weight: 500;
                 color: var(--accent);
+                text-align: center;
               }
               footer {
                 text-align: center;
@@ -281,11 +282,11 @@ jobs:
             </header>
             <main>
               <div class="tiles">
-                <a class="tile" href="docs/visualizer.html">
-                  <img src="images/visualization.png" alt="Visualization">
-                  <span>Visualization</span>
-                </a>
                 ${VALIDATION_TILE}
+                <a class="tile" href="docs/visualizer.html">
+                  <img src="images/visualization.png" alt="Visualize Results">
+                  <span>Visualize Results</span>
+                </a>
               </div>
             </main>
             <footer>

@@ -256,43 +256,31 @@ html = f"""<!DOCTYPE html>
     .chip-custom  {{ background: var(--custom); }}
     .chip-lmrv21  {{ background: var(--lmrv21); }}
     .chip-gistemp {{ background: var(--gistemp); }}
-
-    /* CUSTOM badge — pill identifying metrics that describe the new recon */
-    .badge-custom {{
-      display: inline-block;
-      background: var(--custom); color: white;
-      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
-      padding: 2px 8px; border-radius: 999px;
-      margin-right: 8px; vertical-align: middle;
-    }}
   </style>
 </head>
 <body>
   <h1>LMR Reconstruction Validation</h1>
 
   <h2>Summary Metrics</h2>
-  <p>Rows tagged <span class="badge-custom">CUSTOM</span> describe skill of the
-     new custom reconstruction; the <em>Reference</em> column identifies which
-     dataset it is being compared against (colors match the GMST plot below).</p>
   <table>
     <tr><th>Metric</th><th>Reference</th><th>Value</th></tr>
     <tr>
-      <td><span class="badge-custom">CUSTOM</span>Spatial correlation (geographic mean)</td>
+      <td>Spatial correlation (geographic mean)</td>
       <td><span class="chip chip-gistemp"></span><span class="label-gistemp">GISTEMP</span></td>
       <td>{geo_mean_corr:.4f}</td>
     </tr>
     <tr>
-      <td><span class="badge-custom">CUSTOM</span>GMST correlation ({VALID_START}-{VALID_END})</td>
+      <td>GMST correlation ({VALID_START}-{VALID_END})</td>
       <td><span class="chip chip-gistemp"></span><span class="label-gistemp">GISTEMP</span></td>
       <td>{gmst_corr:.4f}</td>
     </tr>
     <tr>
-      <td><span class="badge-custom">CUSTOM</span>GMST correlation ({lmr_v21_overlap})</td>
+      <td>GMST correlation ({lmr_v21_overlap})</td>
       <td><span class="chip chip-lmrv21"></span><span class="label-lmrv21">LMRv2.1</span></td>
       <td>{lmr_v21_corr:.4f}</td>
     </tr>
     <tr>
-      <td><span class="badge-custom">CUSTOM</span>Ensemble members</td>
+      <td>Ensemble members</td>
       <td>&mdash;</td>
       <td>{int(recon_val.shape[1])}</td>
     </tr>
