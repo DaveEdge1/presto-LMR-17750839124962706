@@ -151,6 +151,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download visualization artifact
         uses: actions/download-artifact@v4
         with:
@@ -171,24 +174,127 @@ jobs:
             mv visualization-output/viz visualization-output/docs
           fi
 
-          # Landing page with links to visualization and validation
-          HAS_VALIDATION=""
+          # Copy icon images (committed to repo) into the deployment
+          mkdir -p ./visualization-output/images
+          cp images/visualization.png images/validation.png ./visualization-output/images/
+
+          # Conditionally include the validation tile
+          VALIDATION_TILE=""
           if [ -f "./visualization-output/validation/index.html" ]; then
-            HAS_VALIDATION="<p><a href='validation/index.html'>Validation Results</a></p>"
+            VALIDATION_TILE='<a class="tile" href="validation/index.html"><img src="images/validation.png" alt="Validation"><span>Validation</span></a>'
           fi
 
           cat > ./visualization-output/index.html << HTMLEOF
           <!DOCTYPE html>
-          <html><head><title>LMR2 Results</title>
-          <style>body{font-family:sans-serif;text-align:center;padding:40px;}</style>
-          </head><body>
-          <h1>LMR2 Reconstruction Results</h1>
-          <p><a href="docs/visualizer.html">Interactive Visualization</a></p>
-          ${HAS_VALIDATION}
-          </body></html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Last Millenium Reanalysis - PReSto Custom</title>
+            <style>
+              :root {
+                --bg: #f7f8fa;
+                --fg: #1a1a1a;
+                --accent: #2563eb;
+                --tile-bg: #ffffff;
+                --tile-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                --tile-shadow-hover: 0 6px 18px rgba(0,0,0,0.14);
+              }
+              * { box-sizing: border-box; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: var(--bg);
+                color: var(--fg);
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+              }
+              header {
+                text-align: center;
+                padding: 48px 24px 24px;
+              }
+              header h1 {
+                margin: 0;
+                font-size: 2rem;
+                font-weight: 600;
+                color: var(--fg);
+              }
+              main {
+                flex: 1;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                padding: 24px;
+              }
+              .tiles {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 32px;
+                justify-content: center;
+              }
+              .tile {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                width: 240px;
+                padding: 24px;
+                background: var(--tile-bg);
+                border-radius: 12px;
+                box-shadow: var(--tile-shadow);
+                text-decoration: none;
+                color: var(--fg);
+                transition: transform 0.15s ease, box-shadow 0.15s ease;
+              }
+              .tile:hover {
+                transform: translateY(-3px);
+                box-shadow: var(--tile-shadow-hover);
+              }
+              .tile img {
+                width: 100%;
+                max-width: 192px;
+                height: auto;
+                margin-bottom: 16px;
+              }
+              .tile span {
+                font-size: 1.15rem;
+                font-weight: 500;
+                color: var(--accent);
+              }
+              footer {
+                text-align: center;
+                padding: 32px 24px 40px;
+              }
+              footer img {
+                max-width: 180px;
+                height: auto;
+                opacity: 0.85;
+              }
+            </style>
+          </head>
+          <body>
+            <header>
+              <h1>Last Millenium Reanalysis - PReSto Custom</h1>
+            </header>
+            <main>
+              <div class="tiles">
+                <a class="tile" href="docs/visualizer.html">
+                  <img src="images/visualization.png" alt="Visualization">
+                  <span>Visualization</span>
+                </a>
+                ${VALIDATION_TILE}
+              </div>
+            </main>
+            <footer>
+              <img src="docs/assets/logo.png" alt="PReSto logo">
+            </footer>
+          </body>
+          </html>
           HTMLEOF
 
           ls -lah ./visualization-output/
+          ls -lah ./visualization-output/images/
           ls -lah ./visualization-output/validation/ 2>/dev/null || echo "No validation output"
 
       - name: Setup Pages
