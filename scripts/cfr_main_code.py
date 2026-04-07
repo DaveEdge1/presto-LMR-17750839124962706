@@ -66,8 +66,46 @@ for pid, pobj in job_cfg.proxydb.records.items():
 if n_floor:
     print(f'R floor: raised {n_floor} record(s) from PSMmse < {MIN_R} to {MIN_R}')
 
-# ── Phase 3: run DA ───────────────────────────────────────────────────────────
+# ── Phase 2.5: Auto-trim recon start year based on proxy coverage ───────────
+# cfr iterates over every year in recon_period regardless of proxy availability.
+# Years with zero/few proxies produce a flat reconstruction that just equals the
+# prior mean, which is misleading. Trim the start year to where proxy coverage
+# reaches a meaningful threshold.
+MIN_PROXIES_DEFAULT = 10
+min_proxies = base_config.get('min_proxies_for_recon', MIN_PROXIES_DEFAULT)
 cfg = job_cfg.configs
+recon_period = list(cfg['recon_period'])
+
+if min_proxies > 0 and len(job_cfg.proxydb.records) > 0:
+    start_yr, end_yr = int(recon_period[0]), int(recon_period[-1])
+    n_years = end_yr - start_yr + 1
+    coverage = np.zeros(n_years, dtype=int)
+    for pobj in job_cfg.proxydb.records.values():
+        t = getattr(pobj, 'time', None)
+        if t is None or len(t) == 0:
+            continue
+        proxy_years = np.unique(np.floor(np.asarray(t, dtype=float)).astype(int))
+        proxy_years = proxy_years[(proxy_years >= start_yr) & (proxy_years <= end_yr)]
+        coverage[proxy_years - start_yr] += 1
+
+    sufficient = np.where(coverage >= min_proxies)[0]
+    if len(sufficient) == 0:
+        print(f'WARNING: No year has >= {min_proxies} proxies '
+              f'(max coverage: {int(coverage.max())}). '
+              f'Running full period {start_yr}-{end_yr} as configured.')
+    else:
+        new_start = start_yr + int(sufficient[0])
+        if new_start > start_yr:
+            print(f'Auto-trim: proxy coverage >= {min_proxies} begins at year {new_start} '
+                  f'(was {start_yr}). Max coverage: {int(coverage.max())} proxies. '
+                  f'Updating recon_period to [{new_start}, {end_yr}].')
+            recon_period[0] = new_start
+            cfg['recon_period'] = recon_period
+        else:
+            print(f'Auto-trim: proxy coverage >= {min_proxies} at start year {start_yr}; '
+                  f'no trim needed.')
+
+# ── Phase 3: run DA ───────────────────────────────────────────────────────────
 job_cfg.run_da_mc(
     recon_period=cfg['recon_period'],
     recon_loc_rad=cfg['recon_loc_rad'],
