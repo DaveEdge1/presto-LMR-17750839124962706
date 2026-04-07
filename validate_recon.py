@@ -24,6 +24,8 @@ import cfr
 # ── Configuration ────────────────────────────────────────────────────────────
 RECON_DIR   = os.environ.get('RECON_DIR', '/recons')
 OUT_DIR     = os.environ.get('VALIDATION_DIR', '/validation')
+LMR_V21_PATH = os.environ.get(
+    'LMR_V21_PATH', '/reference_data/gmt_MCruns_ensemble_full_LMRv2.1.nc')
 VALID_START = 1880
 VALID_END   = 2000
 ANOM_PERIOD = [1951, 1980]
@@ -106,12 +108,55 @@ recon_q95    = np.nanquantile(recon_val, 0.95, axis=1)
 obs_gm = obs.geo_mean()  # EnsTS
 obs_time, obs_1d = ensts_to_1d(obs_gm)
 
+# Load published LMRv2.1 GMST ensemble for comparison
+lmr_v21_time = None
+lmr_v21_median = None
+lmr_v21_q05 = None
+lmr_v21_q95 = None
+if os.path.exists(LMR_V21_PATH):
+    print(f'Loading published LMRv2.1 GMST from {LMR_V21_PATH} ...')
+    lmr_v21 = xr.open_dataset(LMR_V21_PATH)
+    # Variable: gmt with dims (time, MCrun, members)
+    gmt = lmr_v21['gmt']
+    # Stack MC runs and members into a single ensemble dimension
+    ens_dims = [d for d in ('MCrun', 'members') if d in gmt.dims]
+    if ens_dims:
+        gmt_ens = gmt.stack(ensemble=ens_dims)
+    else:
+        gmt_ens = gmt
+    ens_arr = np.asarray(gmt_ens.values)  # (time, ensemble)
+
+    # Convert time to integer years (cftime/datetime → year)
+    raw_time = lmr_v21['time'].values
+    try:
+        lmr_v21_time = np.array([int(t.year) for t in raw_time])
+    except AttributeError:
+        # Fallback: numeric time already in years
+        lmr_v21_time = np.asarray(raw_time, dtype=float).astype(int)
+
+    lmr_v21_median = np.nanmedian(ens_arr, axis=1)
+    lmr_v21_q05    = np.nanquantile(ens_arr, 0.05, axis=1)
+    lmr_v21_q95    = np.nanquantile(ens_arr, 0.95, axis=1)
+    print(f'  LMRv2.1 GMST: {len(lmr_v21_time)} years, '
+          f'{ens_arr.shape[1]} ensemble members')
+else:
+    print(f'WARNING: LMRv2.1 reference file not found at {LMR_V21_PATH}; '
+          f'skipping LMRv2.1 comparison')
+
 fig, ax = plt.subplots(figsize=(14, 5))
 ax.fill_between(recon_time, recon_q05, recon_q95,
                 alpha=0.3, color='steelblue',
-                label='Reconstruction (5-95% range)')
+                label='Custom recon (5-95% range)')
 ax.plot(recon_time, recon_median, color='steelblue', lw=1.5,
-        label='Reconstruction (median)')
+        label='Custom recon (median)')
+
+if lmr_v21_time is not None:
+    ax.fill_between(lmr_v21_time, lmr_v21_q05, lmr_v21_q95,
+                    alpha=0.25, color='darkorange',
+                    label='LMRv2.1 (5-95% range)')
+    ax.plot(lmr_v21_time, lmr_v21_median, color='darkorange', lw=1.5,
+            label='LMRv2.1 (median)')
+
 ax.plot(obs_time, obs_1d, color='red', lw=1.5,
         label='GISTEMP', alpha=0.85)
 
@@ -119,29 +164,48 @@ ax.set_xlabel('Year CE')
 ax.set_ylabel('Temperature Anomaly (\u00b0C)')
 ax.set_title('Global Mean Surface Temperature')
 ax.legend(loc='upper left')
-ax.set_xlim(0, 2000)
+ax.set_xlim(min(recon_time.min(), lmr_v21_time.min()) if lmr_v21_time is not None else recon_time.min(),
+            2000)
 ax.axhline(0, color='gray', lw=0.5, alpha=0.5)
 fig.savefig(os.path.join(OUT_DIR, 'gmst_timeseries.png'),
             dpi=150, bbox_inches='tight')
 plt.close(fig)
 
 # ── 5. Compute GMST correlation in instrumental period ──────────────────────
+def gmst_correlation(years_a, vals_a, years_b, vals_b, ymin, ymax):
+    """Pearson correlation of two GMST series over [ymin, ymax]."""
+    common = np.intersect1d(years_a, years_b)
+    common = common[(common >= ymin) & (common <= ymax)]
+    if len(common) < 5:
+        return float('nan'), 0
+    a = np.array([vals_a[years_a == y][0] for y in common])
+    b = np.array([vals_b[years_b == y][0] for y in common])
+    mask = np.isfinite(a) & np.isfinite(b)
+    if mask.sum() < 5:
+        return float('nan'), int(mask.sum())
+    return float(np.corrcoef(a[mask], b[mask])[0, 1]), int(mask.sum())
+
+
 recon_years = recon_time.astype(int)
 obs_years   = obs_time.astype(int)
-common = np.intersect1d(recon_years, obs_years)
-common = common[(common >= VALID_START) & (common <= VALID_END)]
 
-if len(common) >= 5:
-    r_vals = np.array([recon_median[recon_years == y][0] for y in common])
-    o_vals = np.array([obs_1d[obs_years == y][0] for y in common])
-    mask = np.isfinite(r_vals) & np.isfinite(o_vals)
-    if mask.sum() >= 5:
-        gmst_corr = float(np.corrcoef(r_vals[mask], o_vals[mask])[0, 1])
-    else:
-        gmst_corr = float('nan')
-else:
-    gmst_corr = float('nan')
-print(f'  GMST correlation ({VALID_START}-{VALID_END}): {gmst_corr:.4f}')
+gmst_corr, _ = gmst_correlation(
+    recon_years, recon_median, obs_years, obs_1d,
+    VALID_START, VALID_END)
+print(f'  GMST corr vs GISTEMP ({VALID_START}-{VALID_END}): {gmst_corr:.4f}')
+
+# Correlation against published LMRv2.1 over the period of overlap
+lmr_v21_corr = float('nan')
+lmr_v21_overlap = '(none)'
+if lmr_v21_time is not None:
+    overlap_start = int(max(recon_years.min(), lmr_v21_time.min()))
+    overlap_end   = int(min(recon_years.max(), lmr_v21_time.max()))
+    if overlap_end > overlap_start:
+        lmr_v21_corr, n_pts = gmst_correlation(
+            recon_years, recon_median, lmr_v21_time, lmr_v21_median,
+            overlap_start, overlap_end)
+        lmr_v21_overlap = f'{overlap_start}-{overlap_end} ({n_pts} yrs)'
+        print(f'  GMST corr vs LMRv2.1 ({lmr_v21_overlap}): {lmr_v21_corr:.4f}')
 
 # ── 6. Save metrics CSV ─────────────────────────────────────────────────────
 metrics_path = os.path.join(OUT_DIR, 'validation_metrics.csv')
@@ -149,7 +213,9 @@ with open(metrics_path, 'w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(['metric', 'value'])
     writer.writerow(['geo_mean_spatial_corr', f'{geo_mean_corr:.4f}'])
-    writer.writerow(['gmst_corr', f'{gmst_corr:.4f}'])
+    writer.writerow(['gmst_corr_vs_gistemp', f'{gmst_corr:.4f}'])
+    writer.writerow(['gmst_corr_vs_lmrv21', f'{lmr_v21_corr:.4f}'])
+    writer.writerow(['lmrv21_overlap_period', lmr_v21_overlap])
     writer.writerow(['validation_period', f'{VALID_START}-{VALID_END}'])
     writer.writerow(['anom_ref_period', f'{ANOM_PERIOD[0]}-{ANOM_PERIOD[1]}'])
     writer.writerow(['n_ensemble_members', int(recon_val.shape[1])])
@@ -176,8 +242,9 @@ html = f"""<!DOCTYPE html>
   <h2>Summary Metrics</h2>
   <table>
     <tr><th>Metric</th><th>Value</th></tr>
-    <tr><td>Spatial Correlation (geographic mean)</td><td>{geo_mean_corr:.4f}</td></tr>
-    <tr><td>GMST Correlation ({VALID_START}-{VALID_END})</td><td>{gmst_corr:.4f}</td></tr>
+    <tr><td>Spatial Correlation vs GISTEMP (geographic mean)</td><td>{geo_mean_corr:.4f}</td></tr>
+    <tr><td>GMST Correlation vs GISTEMP ({VALID_START}-{VALID_END})</td><td>{gmst_corr:.4f}</td></tr>
+    <tr><td>GMST Correlation vs LMRv2.1 ({lmr_v21_overlap})</td><td>{lmr_v21_corr:.4f}</td></tr>
     <tr><td>Ensemble Members</td><td>{int(recon_val.shape[1])}</td></tr>
     <tr><td>Anomaly Reference Period</td><td>{ANOM_PERIOD[0]}-{ANOM_PERIOD[1]}</td></tr>
   </table>
@@ -188,7 +255,8 @@ html = f"""<!DOCTYPE html>
   <img src="spatial_corr_map.png" alt="Spatial correlation map">
 
   <h2>Global Mean Surface Temperature</h2>
-  <p>Reconstruction ensemble spread (5-95%) with GISTEMP overlay.</p>
+  <p>Custom reconstruction ensemble spread (5-95%) compared against the
+     published LMRv2.1 ensemble and GISTEMP observations.</p>
   <img src="gmst_timeseries.png" alt="GMST time series">
 
   <p class="back"><a href="../index.html">&larr; Back to results</a></p>

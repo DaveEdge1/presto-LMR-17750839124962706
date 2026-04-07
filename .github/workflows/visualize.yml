@@ -116,9 +116,11 @@ jobs:
           docker run --rm \
             -v $(pwd)/validate_recon.py:/app/validate_recon.py:ro \
             -v $(pwd)/cfr-data:/recons:ro \
+            -v $(pwd)/reference_data:/reference_data:ro \
             -v $(pwd)/validation:/validation \
             -e RECON_DIR=/recons \
             -e VALIDATION_DIR=/validation \
+            -e LMR_V21_PATH=/reference_data/gmt_MCruns_ensemble_full_LMRv2.1.nc \
             davidedge/lmr2:latest \
             conda run -n cfr-env python /app/validate_recon.py
 
